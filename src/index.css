@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+@layer base {
+  * {
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+    -webkit-touch-callout: none;
+  }
+
+  body {
+    font-family: 'Silkscreen', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+}
+
+.font-pixel {
+  font-family: 'Press Start 2P', monospace;
+}
+
+.font-retro {
+  font-family: 'Silkscreen', monospace;
+}
+
+/* Pixel art box shadows and borders */
+.pixel-box {
+  box-shadow: 
+    -4px 0 0 0 #0f172a,
+    4px 0 0 0 #0f172a,
+    0 -4px 0 0 #0f172a,
+    0 4px 0 0 #0f172a,
+    -8px 0 0 0 #334155,
+    8px 0 0 0 #334155,
+    0 -8px 0 0 #334155,
+    0 8px 0 0 #334155;
+}
+
+.pixel-btn {
+  box-shadow: 
+    inset -2px -2px 0 0 #1e293b,
+    inset 2px 2px 0 0 #94a3b8;
+}
+
+.pixel-btn:active {
+  box-shadow: 
+    inset 2px 2px 0 0 #0f172a;
+}
+
+/* Custom retro scanline effect for CRT/Retro toggle */
+.scanlines {
+  background: linear-gradient(
+    rgba(18, 16, 16, 0) 50%, 
+    rgba(0, 0, 0, 0.25) 50%
+  ), linear-gradient(
+    90deg,
+    rgba(255, 0, 0, 0.03),
+    rgba(0, 255, 0, 0.01),
+    rgba(0, 0, 255, 0.03)
+  );
+  background-size: 100% 4px, 6px 100%;
+  pointer-events: none;
+}

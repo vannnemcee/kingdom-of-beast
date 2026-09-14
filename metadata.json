@@ -1,0 +1,6 @@
+{
+  "name": "Knight of the Demon Kingdom",
+  "description": "Game RPG Pixel Fantasy klasik dengan petualangan kesatria, misi kerajaan, upgrade senjata, eksplorasi hutan hingga markas Raja Iblis.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
