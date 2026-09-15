@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
-import { Item, PlayerStats } from '../types';
+import { Item, PlayerSkills, PlayerStats } from '../types';
 import { soundManager } from '../audio/soundManager';
+import { SKILLS_DATA } from '../engine/worldData';
 
 interface InventoryModalProps {
   playerStats: PlayerStats;
   onEquipWeapon: (weapon: Item) => void;
   onEquipArmor: (armor: Item) => void;
   onUsePotion: () => void;
+  onUpgradeSkill?: (skillId: keyof PlayerSkills) => void;
+  initialTab?: 'status' | 'weapons' | 'armors' | 'items' | 'quests' | 'skills';
   onClose: () => void;
 }
 
@@ -15,15 +18,33 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
   onEquipWeapon,
   onEquipArmor,
   onUsePotion,
+  onUpgradeSkill,
+  initialTab = 'status',
   onClose,
 }) => {
-  const [tab, setTab] = useState<'status' | 'weapons' | 'armors' | 'items' | 'quests'>('status');
+  const [tab, setTab] = useState<'status' | 'weapons' | 'armors' | 'items' | 'quests' | 'skills'>(initialTab);
 
   const totalDmg = playerStats.baseDamage + playerStats.equippedWeapon.value;
   const totalDef = playerStats.baseDefense + playerStats.equippedArmor.value;
 
   const weapons = playerStats.inventory.filter((i) => i.type === 'weapon');
   const armors = playerStats.inventory.filter((i) => i.type === 'armor');
+
+  const skills = playerStats.skills || { whirlwind: 1, holyThrust: 0, ironShield: 0 };
+  const skillPoints = playerStats.skillPoints || 0;
+
+  const getSkillEffectPreview = (skillId: keyof PlayerSkills, level: number) => {
+    if (skillId === 'whirlwind') {
+      return `${140 + level * 20}% Area DMG (${Math.max(2.5, 5 - level * 0.4).toFixed(1)}s CD)`;
+    }
+    if (skillId === 'holyThrust') {
+      return `${180 + level * 30}% Tembus Cahaya (${Math.max(3.5, 7 - level * 0.5).toFixed(1)}s CD)`;
+    }
+    if (skillId === 'ironShield') {
+      return `Kebal ${(1.5 + level * 0.5).toFixed(1)}s & +${15 + level * 10} HP (${Math.max(6, 12 - level * 1).toFixed(1)}s CD)`;
+    }
+    return '';
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs p-4 select-none">
@@ -52,6 +73,7 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
           {(
             [
               { id: 'status', label: '📊 STATUS' },
+              { id: 'skills', label: `✨ SKILL ${skillPoints > 0 ? `(+${skillPoints})` : ''}` },
               { id: 'weapons', label: '⚔️ SENJATA' },
               { id: 'armors', label: '🛡️ ZIRAH' },
               { id: 'items', label: '🧪 ITEM' },
@@ -68,7 +90,7 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
                 tab === t.id
                   ? 'bg-amber-500 text-slate-950 font-bold border border-amber-300'
                   : 'bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700'
-              }`}
+              } ${t.id === 'skills' && skillPoints > 0 ? 'animate-pulse text-amber-300 font-bold' : ''}`}
             >
               {t.label}
             </button>
@@ -107,8 +129,8 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
                   <span className="text-base font-pixel text-blue-400">🛡️ {totalDef}</span>
                 </div>
                 <div className="p-2.5 rounded bg-slate-950/60 border border-slate-800">
-                  <span className="text-[10px] text-slate-400 font-pixel block mb-1">KOIN KERAJAAN</span>
-                  <span className="text-base font-pixel text-yellow-300">🪙 {playerStats.coin}</span>
+                  <span className="text-[10px] text-slate-400 font-pixel block mb-1">POIN SKILL</span>
+                  <span className="text-base font-pixel text-amber-300">✨ {skillPoints} Poin</span>
                 </div>
               </div>
 
@@ -137,6 +159,89 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: SKILLS */}
+          {tab === 'skills' && (
+            <div className="space-y-3">
+              {/* Skill points header bar */}
+              <div className="p-3 rounded-lg bg-gradient-to-r from-amber-950/80 via-slate-950/90 to-amber-950/80 border-2 border-amber-500/60 flex items-center justify-between">
+                <div>
+                  <span className="font-pixel text-xs text-amber-300 block">
+                    ✨ POIN SKILL TERSEDIA: <span className="text-base text-yellow-300 font-bold">{skillPoints}</span>
+                  </span>
+                  <span className="text-[11px] text-slate-400">
+                    Naikkan level karakter (+1 Poin per Level) untuk memperkuat dan membuka skill!
+                  </span>
+                </div>
+              </div>
+
+              {/* Skills List */}
+              <div className="space-y-2.5">
+                {Object.values(SKILLS_DATA).map((s) => {
+                  const currentLvl = skills[s.id] || 0;
+                  const isMax = currentLvl >= s.maxLevel;
+                  const canUpgrade = skillPoints > 0 && !isMax;
+
+                  return (
+                    <div
+                      key={s.id}
+                      className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="w-12 h-12 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center text-2xl shrink-0">
+                          {s.icon}
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-pixel text-xs text-amber-300 font-bold">{s.name}</span>
+                            <span className="font-pixel text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-cyan-300 border border-slate-700">
+                              {s.hotkey}
+                            </span>
+                            <span className="font-pixel text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/40">
+                              LV {currentLvl} / {s.maxLevel}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-300">{s.description}</p>
+                          <div className="text-[11px] text-amber-400/90 font-pixel">
+                            Efek: {getSkillEffectPreview(s.id, Math.max(1, currentLvl))}
+                            {!isMax && (
+                              <span className="text-emerald-400 ml-1">
+                                → Lv {currentLvl + 1}: {getSkillEffectPreview(s.id, currentLvl + 1)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="shrink-0 flex items-center self-end sm:self-center">
+                        {isMax ? (
+                          <span className="font-pixel text-[10px] text-emerald-400 px-3 py-1.5 rounded bg-emerald-950/60 border border-emerald-700">
+                            MAKSIMAL
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              if (canUpgrade && onUpgradeSkill) {
+                                onUpgradeSkill(s.id);
+                              }
+                            }}
+                            disabled={!canUpgrade}
+                            className={`px-3 py-1.5 rounded font-pixel text-[10px] cursor-pointer transition-all ${
+                              canUpgrade
+                                ? 'bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-bold border border-amber-300 shadow-md animate-pulse'
+                                : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
+                            }`}
+                          >
+                            {canUpgrade ? `+ TINGKATKAN (1 POIN)` : 'BUTUH POIN'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

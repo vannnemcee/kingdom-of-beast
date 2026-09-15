@@ -60,6 +60,19 @@ export class GameEngine {
     animFrame: 0,
   };
 
+  // Skills & Active Buffs
+  public skillCooldowns: Record<string, number> = {
+    whirlwind: 0,
+    holyThrust: 0,
+    ironShield: 0,
+  };
+  public divineShieldTimer: number = 0;
+  private lavaDamageTimer: number = 0;
+
+  // Boss tracking for UI synchronization
+  private activeBossEntity: Monster | null = null;
+  private lastReportedBossHp: number = -1;
+
   // Virtual input & keys
   public keys: Record<string, boolean> = {};
   public virtualMovement = { dx: 0, dy: 0 };
@@ -126,6 +139,17 @@ export class GameEngine {
     if (e.key === 'Shift') {
       this.playerDash();
     }
+
+    // Skills: Q/1 (Whirlwind), R/2 (Holy Thrust), F/3 (Iron Shield)
+    if (e.key.toLowerCase() === 'q' || e.key === '1') {
+      this.useSkill('whirlwind');
+    }
+    if (e.key.toLowerCase() === 'r' || e.key === '2') {
+      this.useSkill('holyThrust');
+    }
+    if (e.key.toLowerCase() === 'f' || e.key === '3') {
+      this.useSkill('ironShield');
+    }
   };
 
   private handleKeyUp = (e: KeyboardEvent) => {
@@ -140,6 +164,11 @@ export class GameEngine {
     this.player.y = spawnY;
     this.player.hurtTimer = 0;
     this.player.state = 'idle';
+
+    // Reset active boss tracking on area switch
+    this.activeBossEntity = null;
+    this.lastReportedBossHp = -1;
+    this.callbacks.onBossEncounter(null);
 
     // Copy static NPCs and Portals
     this.npcs = [...this.currentArea.npcs];
@@ -242,12 +271,15 @@ export class GameEngine {
         m.hurtTimer = 12;
         m.state = 'hurt';
 
-        // Knockback monster away from player
+        // Knockback monster away from player (with water check)
         const kx = (m.x - this.player.x) || 1;
         const ky = (m.y - this.player.y) || 1;
         const klen = Math.hypot(kx, ky);
-        m.x += (kx / klen) * (m.isBoss ? 4 : 16);
-        m.y += (ky / klen) * (m.isBoss ? 4 : 16);
+        const kDist = m.isBoss ? 4 : 16;
+        const nextKx = m.x + (kx / klen) * kDist;
+        const nextKy = m.y + (ky / klen) * kDist;
+        if (!this.isWaterBlocked(this.currentAreaId, nextKx, m.y)) m.x = nextKx;
+        if (!this.isWaterBlocked(this.currentAreaId, m.x, nextKy)) m.y = nextKy;
 
         // Add damage number
         this.addDamageNumber(m.x, m.y - 15, totalDmg, isCrit, false);
@@ -255,6 +287,12 @@ export class GameEngine {
 
         soundManager.playHit();
         this.screenShake = isCrit ? 6 : 3;
+
+        // Sync Boss HP immediately in UI
+        if (m.isBoss) {
+          this.lastReportedBossHp = m.hp;
+          this.callbacks.onBossEncounter({ ...m });
+        }
 
         // Check if monster died
         if (m.hp <= 0) {
@@ -266,6 +304,185 @@ export class GameEngine {
     if (hasHit) {
       this.spawnSlashParticles(hitX, hitY);
     }
+  }
+
+  public useSkill(skillId: 'whirlwind' | 'holyThrust' | 'ironShield') {
+    if (this.player.state === 'dead' || this.isPaused) return;
+
+    const skillLevel = this.playerStats.skills?.[skillId] || 0;
+    if (skillLevel <= 0) {
+      return; // Not unlocked
+    }
+
+    if (this.skillCooldowns[skillId] > 0) {
+      return; // On cooldown
+    }
+
+    if (skillId === 'whirlwind') {
+      this.skillCooldowns.whirlwind = 300; // 5 seconds
+      this.player.state = 'attack';
+      this.player.attackTimer = 18;
+      soundManager.playMagic();
+      soundManager.playAttack();
+      this.screenShake = 6;
+
+      const radius = 80 + skillLevel * 14;
+      const skillMultiplier = 1.3 + skillLevel * 0.35;
+      const baseDmg = this.playerStats.baseDamage + this.playerStats.equippedWeapon.value;
+      const totalDmg = Math.max(10, Math.floor(baseDmg * skillMultiplier));
+
+      // Circular blade blast particles
+      for (let i = 0; i < 24; i++) {
+        const angle = (i * Math.PI * 2) / 24;
+        this.particles.push({
+          x: this.player.x + Math.cos(angle) * 16,
+          y: this.player.y + Math.sin(angle) * 16,
+          vx: Math.cos(angle) * 5.2,
+          vy: Math.sin(angle) * 5.2,
+          size: 3,
+          color: i % 2 === 0 ? '#38bdf8' : '#f8fafc',
+          alpha: 1,
+          life: 18,
+          maxLife: 18,
+        });
+      }
+
+      this.monsters.forEach((m) => {
+        if (m.hp <= 0) return;
+        const d = Math.hypot(m.x - this.player.x, m.y - this.player.y);
+        if (d < radius + m.width / 2) {
+          const isCrit = Math.random() < 0.25;
+          const actualDmg = Math.max(8, Math.floor(totalDmg * (isCrit ? 1.5 : 1.0) - m.defense * 0.4));
+          m.hp = Math.max(0, m.hp - actualDmg);
+          m.hurtTimer = 14;
+          m.state = 'hurt';
+
+          const kx = (m.x - this.player.x) || 1;
+          const ky = (m.y - this.player.y) || 1;
+          const klen = Math.hypot(kx, ky);
+          const kDist = m.isBoss ? 8 : 28;
+          const nextKx = m.x + (kx / klen) * kDist;
+          const nextKy = m.y + (ky / klen) * kDist;
+          if (!this.isWaterBlocked(this.currentAreaId, nextKx, m.y)) m.x = nextKx;
+          if (!this.isWaterBlocked(this.currentAreaId, m.x, nextKy)) m.y = nextKy;
+
+          this.addDamageNumber(m.x, m.y - 18, actualDmg, isCrit, false, '🌪️', '#38bdf8');
+          this.spawnHitParticles(m.x, m.y, '#38bdf8');
+
+          if (m.isBoss) {
+            this.lastReportedBossHp = m.hp;
+            this.callbacks.onBossEncounter({ ...m });
+          }
+
+          if (m.hp <= 0) {
+            this.handleMonsterDeath(m);
+          }
+        }
+      });
+    } else if (skillId === 'holyThrust') {
+      this.skillCooldowns.holyThrust = 420; // 7 seconds
+      this.player.state = 'attack';
+      this.player.attackTimer = 16;
+      soundManager.playMagic();
+      this.screenShake = 5;
+
+      let vx = 0;
+      let vy = 0;
+      const speed = 8.5;
+      if (this.player.facing === 'down') vy = speed;
+      else if (this.player.facing === 'up') vy = -speed;
+      else if (this.player.facing === 'left') vx = -speed;
+      else if (this.player.facing === 'right') vx = speed;
+
+      const skillMultiplier = 1.6 + skillLevel * 0.45;
+      const baseDmg = this.playerStats.baseDamage + this.playerStats.equippedWeapon.value;
+      const dmg = Math.max(14, Math.floor(baseDmg * skillMultiplier));
+
+      this.projectiles.push({
+        id: Math.random().toString(),
+        x: this.player.x + (vx !== 0 ? (vx > 0 ? 20 : -20) : 0),
+        y: this.player.y + (vy !== 0 ? (vy > 0 ? 20 : -20) : 0),
+        vx,
+        vy,
+        damage: dmg,
+        fromPlayer: true,
+        type: 'holy_beam',
+        radius: 20,
+        lifetime: 45,
+        color: '#fef08a',
+      });
+
+      for (let i = 0; i < 12; i++) {
+        this.particles.push({
+          x: this.player.x,
+          y: this.player.y,
+          vx: (vx * 0.4) + (Math.random() - 0.5) * 3,
+          vy: (vy * 0.4) + (Math.random() - 0.5) * 3,
+          size: 3,
+          color: '#fef08a',
+          alpha: 1,
+          life: 16,
+          maxLife: 16,
+        });
+      }
+    } else if (skillId === 'ironShield') {
+      this.skillCooldowns.ironShield = 720; // 12 seconds
+      const barrierDuration = 120 + skillLevel * 40;
+      this.divineShieldTimer = barrierDuration;
+      this.player.hurtTimer = barrierDuration;
+      soundManager.playLevelUp();
+      this.screenShake = 4;
+
+      const healPercent = 0.15 + skillLevel * 0.05;
+      const healAmount = Math.max(20, Math.floor(this.playerStats.maxHp * healPercent));
+      this.playerStats.hp = Math.min(this.playerStats.maxHp, this.playerStats.hp + healAmount);
+
+      this.addDamageNumber(this.player.x, this.player.y - 22, healAmount, false, true, '🛡️', '#4ade80');
+
+      for (let i = 0; i < 20; i++) {
+        this.particles.push({
+          x: this.player.x + (Math.random() - 0.5) * 30,
+          y: this.player.y + (Math.random() - 0.5) * 30,
+          vx: (Math.random() - 0.5) * 2.5,
+          vy: -Math.random() * 2.5 - 1,
+          size: 3,
+          color: '#38bdf8',
+          alpha: 1,
+          life: 24,
+          maxLife: 24,
+        });
+      }
+    }
+  }
+
+  public isWaterBlocked(areaId: string, x: number, y: number): boolean {
+    if (areaId === 'green_forest') {
+      // Middle river across x: 995 to 1095
+      if (x >= 995 && x <= 1095) {
+        // Wooden bridge across y: 435 to 525 allows crossing!
+        const onBridge = y >= 435 && y <= 525;
+        return !onBridge;
+      }
+    }
+    return false;
+  }
+
+  public isLava(areaId: string, x: number, y: number): boolean {
+    if (areaId === 'demon_territory') {
+      // Stone bridge over lava: x: 790..930, y: 440..520 protects player
+      if (x >= 790 && x <= 930 && y >= 440 && y <= 520) {
+        return false;
+      }
+      // Vertical lava river: x between 800 and 920
+      if (x >= 800 && x <= 920 && y >= 0 && y <= 1300) {
+        return true;
+      }
+      // Horizontal lava river: y between 950 and 1030
+      if (x >= 0 && x <= 2200 && y >= 950 && y <= 1030) {
+        return true;
+      }
+    }
+    return false;
   }
 
   public playerDash() {
@@ -316,6 +533,9 @@ export class GameEngine {
 
     // Check if Boss
     if (m.isBoss) {
+      this.activeBossEntity = null;
+      this.lastReportedBossHp = -1;
+      this.callbacks.onBossEncounter(null);
       soundManager.playQuestClear();
       this.screenShake = 12;
       this.callbacks.onBossDefeated(m.type);
@@ -382,7 +602,15 @@ export class GameEngine {
     return null;
   }
 
-  public addDamageNumber(x: number, y: number, damage: number, isCrit: boolean = false, isHeal: boolean = false) {
+  public addDamageNumber(
+    x: number,
+    y: number,
+    damage: number,
+    isCrit: boolean = false,
+    isHeal: boolean = false,
+    prefix?: string,
+    color?: string
+  ) {
     this.damageNumbers.push({
       id: Math.random().toString(),
       x,
@@ -390,6 +618,8 @@ export class GameEngine {
       damage,
       isCrit,
       isHeal,
+      prefix,
+      color,
       alpha: 1.0,
       vy: -1.8,
     });
@@ -458,7 +688,7 @@ export class GameEngine {
       if (this.screenShake < 0.2) this.screenShake = 0;
     }
 
-    // Timers
+    // Timers & Cooldowns
     if (this.player.attackTimer > 0) {
       this.player.attackTimer--;
       if (this.player.attackTimer === 0) {
@@ -468,6 +698,12 @@ export class GameEngine {
     if (this.player.hurtTimer > 0) this.player.hurtTimer--;
     if (this.player.dashCooldown > 0) this.player.dashCooldown--;
     if (this.player.dashTimer > 0) this.player.dashTimer--;
+
+    // Skill Cooldowns
+    if (this.skillCooldowns.whirlwind > 0) this.skillCooldowns.whirlwind--;
+    if (this.skillCooldowns.holyThrust > 0) this.skillCooldowns.holyThrust--;
+    if (this.skillCooldowns.ironShield > 0) this.skillCooldowns.ironShield--;
+    if (this.divineShieldTimer > 0) this.divineShieldTimer--;
 
     // Movement if alive and not locked in attack
     if (this.player.state !== 'dead') {
@@ -495,8 +731,19 @@ export class GameEngine {
 
         const len = Math.hypot(dx, dy);
         const curSpeed = this.player.dashTimer > 0 ? this.player.speed * 2.2 : this.player.speed;
-        this.player.x += (dx / len) * curSpeed;
-        this.player.y += (dy / len) * curSpeed;
+        const stepX = (dx / len) * curSpeed;
+        const stepY = (dy / len) * curSpeed;
+
+        // Check water collision for Player (bridges allow crossing)
+        const nextX = this.player.x + stepX;
+        if (!this.isWaterBlocked(this.currentAreaId, nextX, this.player.y)) {
+          this.player.x = nextX;
+        }
+
+        const nextY = this.player.y + stepY;
+        if (!this.isWaterBlocked(this.currentAreaId, this.player.x, nextY)) {
+          this.player.y = nextY;
+        }
 
         if (this.player.state !== 'attack') {
           this.player.state = 'walk';
@@ -511,6 +758,30 @@ export class GameEngine {
       const pad = 24;
       this.player.x = Math.max(pad, Math.min(this.currentArea.width - pad, this.player.x));
       this.player.y = Math.max(pad, Math.min(this.currentArea.height - pad, this.player.y));
+
+      // Lava damage check: standing directly in molten lava slowly depletes HP
+      if (this.isLava(this.currentAreaId, this.player.x, this.player.y)) {
+        this.lavaDamageTimer++;
+        if (this.lavaDamageTimer >= 22) {
+          this.lavaDamageTimer = 0;
+          this.hitPlayer(7, true);
+        }
+        if (Math.random() < 0.35) {
+          this.particles.push({
+            x: this.player.x + (Math.random() - 0.5) * 16,
+            y: this.player.y + 10 + (Math.random() - 0.5) * 6,
+            vx: (Math.random() - 0.5) * 1.5,
+            vy: -Math.random() * 2 - 1,
+            size: 2.5,
+            color: '#ea580c',
+            alpha: 1,
+            life: 14,
+            maxLife: 14,
+          });
+        }
+      } else {
+        this.lavaDamageTimer = 0;
+      }
     }
 
     // Check Portals collision
@@ -536,7 +807,7 @@ export class GameEngine {
       const dist = Math.hypot(this.player.x - m.x, this.player.y - m.y);
 
       // Track active boss for UI
-      if (m.isBoss && dist < 500) {
+      if (m.isBoss && dist < 550) {
         nearestBoss = m;
       }
 
@@ -550,8 +821,16 @@ export class GameEngine {
           m.state = 'chase';
           const vx = (this.player.x - m.x) / dist;
           const vy = (this.player.y - m.y) / dist;
-          m.x += vx * m.speed;
-          m.y += vy * m.speed;
+          const nextMx = m.x + vx * m.speed;
+          const nextMy = m.y + vy * m.speed;
+
+          // Monsters also cannot walk across water
+          if (!this.isWaterBlocked(this.currentAreaId, nextMx, m.y)) {
+            m.x = nextMx;
+          }
+          if (!this.isWaterBlocked(this.currentAreaId, m.x, nextMy)) {
+            m.y = nextMy;
+          }
         } else {
           // In attack range
           m.attackCooldown--;
@@ -565,7 +844,21 @@ export class GameEngine {
       }
     });
 
-    this.callbacks.onBossEncounter(nearestBoss);
+    // Reactive Boss UI Synchronization
+    if (nearestBoss) {
+      const boss = nearestBoss as Monster;
+      if (this.activeBossEntity !== boss || this.lastReportedBossHp !== boss.hp) {
+        this.activeBossEntity = boss;
+        this.lastReportedBossHp = boss.hp;
+        this.callbacks.onBossEncounter({ ...boss });
+      }
+    } else {
+      if (this.activeBossEntity !== null) {
+        this.activeBossEntity = null;
+        this.lastReportedBossHp = -1;
+        this.callbacks.onBossEncounter(null);
+      }
+    }
 
     // Update Projectiles
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
@@ -574,11 +867,53 @@ export class GameEngine {
       p.y += p.vy;
       p.lifetime--;
 
-      // Check collision with player
+      // Check collision with player for monster projectiles
       if (!p.fromPlayer && this.player.state !== 'dead') {
         const pd = Math.hypot(this.player.x - p.x, this.player.y - p.y);
         if (pd < p.radius + 14) {
           this.hitPlayer(p.damage);
+          this.projectiles.splice(i, 1);
+          continue;
+        }
+      }
+
+      // Check collision with monsters for player projectiles (e.g. Holy Thrust)
+      if (p.fromPlayer) {
+        let hitSomething = false;
+        for (const m of this.monsters) {
+          if (m.hp <= 0) continue;
+          const md = Math.hypot(m.x - p.x, m.y - p.y);
+          if (md < p.radius + m.width / 2) {
+            hitSomething = true;
+            const dmg = p.damage;
+            m.hp = Math.max(0, m.hp - dmg);
+            m.hurtTimer = 12;
+            m.state = 'hurt';
+
+            const kx = p.vx || 1;
+            const ky = p.vy || 1;
+            const klen = Math.hypot(kx, ky);
+            const kDist = m.isBoss ? 4 : 16;
+            const nextKx = m.x + (kx / klen) * kDist;
+            const nextKy = m.y + (ky / klen) * kDist;
+            if (!this.isWaterBlocked(this.currentAreaId, nextKx, m.y)) m.x = nextKx;
+            if (!this.isWaterBlocked(this.currentAreaId, m.x, nextKy)) m.y = nextKy;
+
+            this.addDamageNumber(m.x, m.y - 18, dmg, true, false, '✨', '#fef08a');
+            this.spawnHitParticles(m.x, m.y, '#fef08a');
+            soundManager.playHit();
+
+            if (m.isBoss) {
+              this.lastReportedBossHp = m.hp;
+              this.callbacks.onBossEncounter({ ...m });
+            }
+
+            if (m.hp <= 0) {
+              this.handleMonsterDeath(m);
+            }
+          }
+        }
+        if (hitSomething && p.type !== 'holy_beam') {
           this.projectiles.splice(i, 1);
           continue;
         }
@@ -712,21 +1047,25 @@ export class GameEngine {
     }
   }
 
-  public hitPlayer(incomingDamage: number) {
-    if (this.player.hurtTimer > 0 || this.player.state === 'dead') return;
+  public hitPlayer(incomingDamage: number, isLava: boolean = false) {
+    if (this.player.state === 'dead') return;
+    if (this.divineShieldTimer > 0) return; // Divine shield absorbs all damage!
+    if (this.player.hurtTimer > 0 && !isLava) return;
 
     // Defense mitigates damage
     const totalDef = this.playerStats.baseDefense + this.playerStats.equippedArmor.value;
-    const actualDmg = Math.max(3, Math.floor(incomingDamage - totalDef * 0.6));
+    const actualDmg = isLava
+      ? Math.max(3, Math.floor(incomingDamage - totalDef * 0.15))
+      : Math.max(3, Math.floor(incomingDamage - totalDef * 0.6));
 
     this.playerStats.hp = Math.max(0, this.playerStats.hp - actualDmg);
-    this.player.hurtTimer = 22; // Invulnerability frames
+    this.player.hurtTimer = isLava ? 12 : 22; // Invulnerability frames
     this.player.state = 'hurt';
 
-    this.screenShake = 6;
+    this.screenShake = isLava ? 2 : 6;
     soundManager.playPlayerHurt();
-    this.addDamageNumber(this.player.x, this.player.y - 18, actualDmg, false, false);
-    this.spawnHitParticles(this.player.x, this.player.y, '#ef4444');
+    this.addDamageNumber(this.player.x, this.player.y - 18, actualDmg, false, false, isLava ? '🔥' : undefined, isLava ? '#f97316' : undefined);
+    this.spawnHitParticles(this.player.x, this.player.y, isLava ? '#ea580c' : '#ef4444');
 
     if (this.playerStats.hp <= 0) {
       this.player.state = 'dead';
@@ -763,7 +1102,7 @@ export class GameEngine {
 
     // 2. Portals
     this.portals.forEach((p) => {
-      PixelRenderer.drawPortal(ctx, p.x, p.y, this.player.animFrame, p.label);
+      PixelRenderer.drawPortal(ctx, p.x, p.y, this.player.animFrame, p.label, this.currentArea.width);
     });
 
     // 3. Chests
@@ -830,14 +1169,23 @@ export class GameEngine {
       weaponTier
     );
 
+    // Divine Shield Active Aura
+    if (this.divineShieldTimer > 0) {
+      PixelRenderer.drawDivineShield(ctx, this.player.x, this.player.y, this.player.animFrame);
+    }
+
     // 7. Projectiles
     this.projectiles.forEach((p) => {
-      ctx.save();
-      ctx.fillStyle = p.color || (p.type === 'arrow' ? '#cbd5e1' : '#f97316');
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
+      if (p.type === 'holy_beam') {
+        PixelRenderer.drawHolyBeam(ctx, p.x, p.y, p.vx, p.vy, this.player.animFrame);
+      } else {
+        ctx.save();
+        ctx.fillStyle = p.color || (p.type === 'arrow' ? '#cbd5e1' : '#f97316');
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
     });
 
     // 8. Particles
@@ -855,10 +1203,12 @@ export class GameEngine {
       ctx.globalAlpha = dn.alpha;
       ctx.font = dn.isCrit ? "bold 12px 'Press Start 2P', monospace" : "10px 'Press Start 2P', monospace";
       ctx.textAlign = 'center';
-      ctx.fillStyle = dn.isHeal ? '#4ade80' : (dn.isCrit ? '#fef08a' : '#ef4444');
+      ctx.fillStyle = dn.color || (dn.isHeal ? '#4ade80' : (dn.isCrit ? '#fef08a' : '#ef4444'));
       ctx.strokeStyle = '#000000';
       ctx.lineWidth = 2;
-      const text = dn.isHeal ? `+${dn.damage}` : `-${dn.damage}${dn.isCrit ? '!' : ''}`;
+      const text = dn.isHeal
+        ? `${dn.prefix ? dn.prefix + ' ' : ''}+${dn.damage}`
+        : `${dn.prefix ? dn.prefix + ' ' : ''}-${dn.damage}${dn.isCrit ? '!' : ''}`;
       ctx.strokeText(text, dn.x, dn.y);
       ctx.fillText(text, dn.x, dn.y);
       ctx.restore();
@@ -986,6 +1336,9 @@ export class GameEngine {
       // Molten lava rivers
       PixelRenderer.drawLava(ctx, 800, 0, 120, 1300, f);
       PixelRenderer.drawLava(ctx, 0, 950, 2200, 80, f);
+
+      // Obsidian stone bridge across vertical lava river
+      PixelRenderer.drawBridge(ctx, 790, 440, 140, 80);
 
       // Dead trees & demon skulls
       PixelRenderer.drawDeadTree(ctx, 250, 300);

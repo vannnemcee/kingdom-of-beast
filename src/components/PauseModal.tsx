@@ -160,8 +160,9 @@ export const PauseModal: React.FC<PauseModalProps> = ({
         </div>
 
         {/* Key Shortcut Tip */}
-        <div className="mt-4 pt-3 border-t border-slate-800 text-center text-[10px] text-slate-400 font-retro">
-          Tekan <span className="text-amber-300 font-pixel">[ESC]</span> atau <span className="text-amber-300 font-pixel">[P]</span> untuk kembali ke game
+        <div className="mt-4 pt-3 border-t border-slate-800 flex justify-between items-center text-[10px] text-slate-400 font-retro">
+          <span>Tekan <span className="text-amber-300 font-pixel">[ESC]</span> untuk kembali</span>
+          <span className="text-amber-400 font-bold font-pixel">v1.6.0</span>
         </div>
       </div>
     </div>

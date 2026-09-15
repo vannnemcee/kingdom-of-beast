@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AreaId, Monster, PlayerStats, Quest } from '../types';
+import { AreaId, Monster, PlayerSkills, PlayerStats, Quest } from '../types';
 import { soundManager } from '../audio/soundManager';
 
 interface GameUIProps {
@@ -19,6 +19,8 @@ interface GameUIProps {
   onAttack: () => void;
   onDash: () => void;
   onUsePotion: () => void;
+  onUseSkill?: (skillId: keyof PlayerSkills) => void;
+  onOpenSkills?: () => void;
   onVirtualMove: (dx: number, dy: number) => void;
   nearbyInteractable: string | null; // e.g. "Tekan E / Klik untuk Berbicara"
   onInteract: () => void;
@@ -40,6 +42,8 @@ export const GameUI: React.FC<GameUIProps> = ({
   onAttack,
   onDash,
   onUsePotion,
+  onUseSkill,
+  onOpenSkills,
   onVirtualMove,
   nearbyInteractable,
   onInteract,
@@ -48,6 +52,9 @@ export const GameUI: React.FC<GameUIProps> = ({
 
   const hpPercent = Math.max(0, Math.min(100, (playerStats.hp / playerStats.maxHp) * 100));
   const expPercent = Math.max(0, Math.min(100, (playerStats.exp / playerStats.maxExp) * 100));
+
+  const skills = playerStats.skills || { whirlwind: 1, holyThrust: 0, ironShield: 0 };
+  const skillPoints = playerStats.skillPoints || 0;
 
   // Find primary active quest for tracker
   const activeQuest: Quest | undefined = playerStats.activeQuests.find((q) => !q.isClaimed);
@@ -307,6 +314,22 @@ export const GameUI: React.FC<GameUIProps> = ({
         </div>
       )}
 
+      {/* --- SKILL POINTS NOTIFICATION / UPGRADE SHORTCUT --- */}
+      {skillPoints > 0 && !isDead && (
+        <div className="absolute left-1/2 -translate-x-1/2 bottom-20 pointer-events-auto">
+          <button
+            onClick={() => {
+              soundManager.playLevelUp();
+              if (onOpenSkills) onOpenSkills();
+            }}
+            className="flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-pixel text-[11px] font-bold border-2 border-yellow-200 shadow-2xl cursor-pointer animate-pulse active:scale-95"
+          >
+            <span>✨</span>
+            <span>UPGRADE SKILL ({skillPoints} POIN)</span>
+          </button>
+        </div>
+      )}
+
       {/* --- BOTTOM ROW: TOUCH CONTROLS (VIRTUAL JOYPAD & COMBAT BUTTONS) --- */}
       <div className="flex items-end justify-between w-full pointer-events-none">
         {/* VIRTUAL D-PAD (BOTTOM-LEFT) */}
@@ -351,46 +374,105 @@ export const GameUI: React.FC<GameUIProps> = ({
           </div>
         </div>
 
-        {/* COMBAT BUTTONS (BOTTOM-RIGHT) */}
-        <div className="pointer-events-auto flex items-end gap-2.5">
-          {/* Health Potion Shortcut */}
-          <button
-            onClick={() => {
-              if (playerStats.potionCount > 0 && playerStats.hp < playerStats.maxHp) {
-                onUsePotion();
-              }
-            }}
-            disabled={playerStats.potionCount === 0 || playerStats.hp >= playerStats.maxHp}
-            className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center font-pixel cursor-pointer select-none border-2 shadow-lg transition-transform active:scale-90 ${
-              playerStats.potionCount > 0 && playerStats.hp < playerStats.maxHp
-                ? 'bg-emerald-700 hover:bg-emerald-600 border-emerald-400 text-slate-100'
-                : 'bg-slate-800/80 border-slate-700 text-slate-500 cursor-not-allowed'
-            }`}
-            title="Minum Potion [Q]"
-          >
-            <span className="text-sm">🧪</span>
-            <span className="text-[9px]">x{playerStats.potionCount}</span>
-          </button>
+        {/* COMBAT & SKILLS SECTION (BOTTOM-RIGHT) */}
+        <div className="pointer-events-auto flex flex-col items-end gap-2">
+          {/* Active Skills Bar */}
+          <div className="flex items-center gap-1.5 bg-slate-950/70 p-1 rounded-xl border border-slate-700/80 backdrop-blur-xs">
+            {/* Whirlwind Skill */}
+            <button
+              onClick={() => onUseSkill && onUseSkill('whirlwind')}
+              className="w-11 h-11 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-cyan-700 border border-slate-600 text-slate-100 font-pixel flex flex-col items-center justify-center cursor-pointer select-none relative transition-transform active:scale-90"
+              title="Tebasan Badai [Q / 1]"
+            >
+              <span className="text-sm">🌪️</span>
+              <span className="text-[7px] text-cyan-300 font-bold">Q/1</span>
+              <span className="absolute -top-1.5 -right-1.5 px-1 py-0.2 rounded-full bg-amber-500 text-slate-950 text-[7px] font-bold">
+                {skills.whirlwind || 1}
+              </span>
+            </button>
 
-          {/* Dash / Evade Button */}
-          <button
-            onClick={onDash}
-            className="w-13 h-13 rounded-xl bg-blue-700 hover:bg-blue-600 border-2 border-blue-400 text-slate-100 font-pixel text-xs flex flex-col items-center justify-center cursor-pointer select-none shadow-lg transition-transform active:scale-90"
-            title="Dash [Shift]"
-          >
-            <span className="text-base">💨</span>
-            <span className="text-[8px] font-bold">DASH</span>
-          </button>
+            {/* Holy Thrust Skill */}
+            <button
+              onClick={() => onUseSkill && onUseSkill('holyThrust')}
+              disabled={(skills.holyThrust || 0) === 0}
+              className={`w-11 h-11 rounded-lg border font-pixel flex flex-col items-center justify-center select-none relative transition-transform active:scale-90 ${
+                (skills.holyThrust || 0) > 0
+                  ? 'bg-slate-800 hover:bg-slate-700 active:bg-yellow-700 border-slate-600 text-slate-100 cursor-pointer'
+                  : 'bg-slate-900/80 border-slate-800 text-slate-600 cursor-not-allowed'
+              }`}
+              title="Tusukan Cahaya [R / 2]"
+            >
+              <span className="text-sm">✨</span>
+              <span className="text-[7px] text-yellow-300 font-bold">R/2</span>
+              {(skills.holyThrust || 0) > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 px-1 py-0.2 rounded-full bg-amber-500 text-slate-950 text-[7px] font-bold">
+                  {skills.holyThrust}
+                </span>
+              )}
+            </button>
 
-          {/* Main Attack Button */}
-          <button
-            onClick={onAttack}
-            className="w-16 h-16 rounded-2xl bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 hover:to-amber-600 border-2 border-amber-300 text-slate-950 font-pixel flex flex-col items-center justify-center cursor-pointer select-none shadow-xl transition-transform active:scale-90"
-            title="Serang [Spasi / Klik]"
-          >
-            <span className="text-xl">⚔️</span>
-            <span className="text-[9px] font-bold">SERANG</span>
-          </button>
+            {/* Iron Shield Skill */}
+            <button
+              onClick={() => onUseSkill && onUseSkill('ironShield')}
+              disabled={(skills.ironShield || 0) === 0}
+              className={`w-11 h-11 rounded-lg border font-pixel flex flex-col items-center justify-center select-none relative transition-transform active:scale-90 ${
+                (skills.ironShield || 0) > 0
+                  ? 'bg-slate-800 hover:bg-slate-700 active:bg-blue-700 border-slate-600 text-slate-100 cursor-pointer'
+                  : 'bg-slate-900/80 border-slate-800 text-slate-600 cursor-not-allowed'
+              }`}
+              title="Perisai Benteng [F / 3]"
+            >
+              <span className="text-sm">🛡️</span>
+              <span className="text-[7px] text-blue-300 font-bold">F/3</span>
+              {(skills.ironShield || 0) > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 px-1 py-0.2 rounded-full bg-amber-500 text-slate-950 text-[7px] font-bold">
+                  {skills.ironShield}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* Primary Action Buttons (Potion, Dash, Attack) */}
+          <div className="flex items-end gap-2.5">
+            {/* Health Potion Shortcut */}
+            <button
+              onClick={() => {
+                if (playerStats.potionCount > 0 && playerStats.hp < playerStats.maxHp) {
+                  onUsePotion();
+                }
+              }}
+              disabled={playerStats.potionCount === 0 || playerStats.hp >= playerStats.maxHp}
+              className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center font-pixel cursor-pointer select-none border-2 shadow-lg transition-transform active:scale-90 ${
+                playerStats.potionCount > 0 && playerStats.hp < playerStats.maxHp
+                  ? 'bg-emerald-700 hover:bg-emerald-600 border-emerald-400 text-slate-100'
+                  : 'bg-slate-800/80 border-slate-700 text-slate-500 cursor-not-allowed'
+              }`}
+              title="Minum Potion [H / E]"
+            >
+              <span className="text-sm">🧪</span>
+              <span className="text-[9px]">x{playerStats.potionCount}</span>
+            </button>
+
+            {/* Dash / Evade Button */}
+            <button
+              onClick={onDash}
+              className="w-13 h-13 rounded-xl bg-blue-700 hover:bg-blue-600 border-2 border-blue-400 text-slate-100 font-pixel text-xs flex flex-col items-center justify-center cursor-pointer select-none shadow-lg transition-transform active:scale-90"
+              title="Dash [Shift]"
+            >
+              <span className="text-base">💨</span>
+              <span className="text-[8px] font-bold">DASH</span>
+            </button>
+
+            {/* Main Attack Button */}
+            <button
+              onClick={onAttack}
+              className="w-16 h-16 rounded-2xl bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 hover:to-amber-600 border-2 border-amber-300 text-slate-950 font-pixel flex flex-col items-center justify-center cursor-pointer select-none shadow-xl transition-transform active:scale-90"
+              title="Serang [Spasi / Klik]"
+            >
+              <span className="text-xl">⚔️</span>
+              <span className="text-[9px] font-bold">SERANG</span>
+            </button>
+          </div>
         </div>
       </div>
 

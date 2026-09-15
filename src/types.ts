@@ -42,6 +42,24 @@ export interface Quest {
   areaHint: string;
 }
 
+export interface PlayerSkills {
+  whirlwind: number; // level 1-5
+  holyThrust: number; // level 0-5
+  ironShield: number; // level 0-5
+}
+
+export interface SkillInfo {
+  id: keyof PlayerSkills;
+  name: string;
+  description: string;
+  icon: string;
+  key: string;
+  hotkey?: string;
+  cooldownSeconds: number;
+  maxLevel: number;
+  previewEffect?: string;
+}
+
 export interface PlayerStats {
   hp: number;
   maxHp: number;
@@ -59,6 +77,8 @@ export interface PlayerStats {
   completedQuestIds: string[];
   completedQuests?: string[];
   monstersSlainCount: number;
+  skillPoints: number;
+  skills: PlayerSkills;
 }
 
 export interface NPC {
@@ -124,7 +144,7 @@ export interface Projectile {
   vy: number;
   damage: number;
   fromPlayer: boolean;
-  type: 'arrow' | 'fireball' | 'magic' | 'shockwave' | 'energy_beam';
+  type: 'arrow' | 'fireball' | 'magic' | 'shockwave' | 'energy_beam' | 'holy_beam';
   radius: number;
   lifetime: number;
   color?: string;
@@ -149,6 +169,8 @@ export interface DamageNumber {
   damage: number;
   isCrit?: boolean;
   isHeal?: boolean;
+  prefix?: string;
+  color?: string;
   alpha: number;
   vy: number;
 }

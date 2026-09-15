@@ -289,7 +289,7 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({
 
       {/* Version & Credits Footer */}
       <div className="absolute bottom-3 left-4 right-4 flex justify-between text-[10px] text-slate-400 font-retro z-10 pointer-events-none">
-        <span>VER 1.0.0 • CLASSIC EDITION</span>
+        <span className="text-amber-400 font-bold">VER 1.6.0 • SKILLS & HAZARDS UPDATE</span>
         <span>KERAJAAN MANUSIA VS RAJA IBLIS</span>
       </div>
     </div>

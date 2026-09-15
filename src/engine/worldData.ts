@@ -1,4 +1,4 @@
-import { AreaId, Chest, Item, Monster, NPC, Portal, Quest } from '../types';
+import { AreaId, Chest, Item, Monster, NPC, Portal, Quest, PlayerStats, PlayerSkills, SkillInfo } from '../types';
 
 export const INITIAL_WEAPONS: Item[] = [
   {
@@ -223,7 +223,43 @@ export const INITIAL_QUESTS: Quest[] = [
   },
 ];
 
-export const INITIAL_PLAYER_STATS = {
+export const SKILLS_DATA: Record<keyof PlayerSkills, SkillInfo> = {
+  whirlwind: {
+    id: 'whirlwind',
+    name: 'Tebasan Badai',
+    description: 'Kesatria berputar cepat menebas semua musuh di sekitarnya dalam radius 360° dengan energi badai dahsyat.',
+    icon: '🌪️',
+    key: 'Q',
+    hotkey: 'Q / 1',
+    cooldownSeconds: 5,
+    maxLevel: 5,
+    previewEffect: 'Area Damage (360°)',
+  },
+  holyThrust: {
+    id: 'holyThrust',
+    name: 'Tusukan Cahaya',
+    description: 'Menembakkan gelombang pedang cahaya suci berkecepatan tinggi yang menembus garis musuh.',
+    icon: '✨',
+    key: 'R',
+    hotkey: 'R / 2',
+    cooldownSeconds: 7,
+    maxLevel: 5,
+    previewEffect: 'Piercing Holy Beam',
+  },
+  ironShield: {
+    id: 'ironShield',
+    name: 'Perisai Benteng',
+    description: 'Membangkitkan pelindung suci kebal serangan musuh sementara dan memulihkan HP secara instan.',
+    icon: '🛡️',
+    key: 'F',
+    hotkey: 'F / 3',
+    cooldownSeconds: 12,
+    maxLevel: 5,
+    previewEffect: 'Invulnerability & Heal',
+  },
+};
+
+export const INITIAL_PLAYER_STATS: PlayerStats = {
   hp: 100,
   maxHp: 100,
   level: 1,
@@ -239,6 +275,12 @@ export const INITIAL_PLAYER_STATS = {
   activeQuests: [INITIAL_QUESTS[0]],
   completedQuestIds: [] as string[],
   monstersSlainCount: 0,
+  skillPoints: 1,
+  skills: {
+    whirlwind: 1,
+    holyThrust: 0,
+    ironShield: 0,
+  },
 };
 
 export interface AreaData {

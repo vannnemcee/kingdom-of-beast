@@ -988,39 +988,213 @@ export class PixelRenderer {
     ctx.restore();
   }
 
-  static drawPortal(ctx: CanvasRenderingContext2D, x: number, y: number, animFrame: number, label: string) {
+  static drawPortal(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    animFrame: number,
+    label: string,
+    areaWidth: number = 2000
+  ) {
     ctx.save();
     ctx.translate(Math.floor(x), Math.floor(y));
 
-    // Stone pillars
-    this.px(ctx, -18, -18, 6, 36, '#475569');
-    this.px(ctx, 12, -18, 6, 36, '#475569');
-    this.px(ctx, -18, -24, 36, 7, '#334155');
-
-    // Swirling magic vortex
-    const pulse = Math.sin(animFrame * 6) * 3;
-    const colors = ['#38bdf8', '#818cf8', '#c084fc', '#f43f5e'];
-    const c = colors[Math.floor(animFrame * 4) % colors.length];
-
+    // 1. Ground Magical Rune Circle
+    const runeGlow = 0.5 + Math.sin(animFrame * 5) * 0.25;
     ctx.save();
-    ctx.fillStyle = c;
-    ctx.globalAlpha = 0.75;
+    ctx.fillStyle = `rgba(56, 189, 248, ${0.15 * runeGlow})`;
     ctx.beginPath();
-    ctx.ellipse(0, 0, 11 + pulse, 16, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 18, 30, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(129, 140, 248, ${0.6 * runeGlow})`;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.restore();
+
+    // 2. Heavy Carved Stone Archway & Pillars
+    // Left Pillar
+    this.px(ctx, -24, 14, 12, 6, '#1e293b'); // Base foot
+    this.px(ctx, -22, -26, 9, 40, '#334155'); // Pillar column
+    this.px(ctx, -20, -24, 5, 36, '#475569'); // Pillar highlight
+    // Right Pillar
+    this.px(ctx, 12, 14, 12, 6, '#1e293b');
+    this.px(ctx, 13, -26, 9, 40, '#334155');
+    this.px(ctx, 15, -24, 5, 36, '#475569');
+    // Carved Runic Markings on pillars (glowing cyan & gold)
+    const runePulse = Math.sin(animFrame * 8);
+    const runeColor = runePulse > 0 ? '#38bdf8' : '#818cf8';
+    this.px(ctx, -19, -16, 3, 4, runeColor);
+    this.px(ctx, -19, -4, 3, 4, runeColor);
+    this.px(ctx, -19, 6, 3, 4, runeColor);
+    this.px(ctx, 16, -16, 3, 4, runeColor);
+    this.px(ctx, 16, -4, 3, 4, runeColor);
+    this.px(ctx, 16, 6, 3, 4, runeColor);
+
+    // Top Keystone Archway
+    this.px(ctx, -26, -34, 52, 10, '#1e293b');
+    this.px(ctx, -24, -32, 48, 7, '#475569');
+    this.px(ctx, -22, -31, 44, 4, '#64748b');
+
+    // Floating Magical Portal Apex Crystal
+    const crystalBob = Math.sin(animFrame * 6) * 2;
+    this.px(ctx, -4, -44 + crystalBob, 8, 10, '#0284c7');
+    this.px(ctx, -3, -43 + crystalBob, 6, 8, '#38bdf8');
+    this.px(ctx, -1, -41 + crystalBob, 2, 4, '#ffffff');
+
+    // 3. Multilayered Swirling Magic Vortex
+    const pulse = Math.sin(animFrame * 7) * 2.5;
+    const colors = ['#0284c7', '#38bdf8', '#818cf8', '#a855f7', '#ec4899'];
+    const activeColor = colors[Math.floor(animFrame * 3.5) % colors.length];
+
+    // Outer cosmic aura
+    ctx.save();
+    const grad = ctx.createRadialGradient(0, -5, 2, 0, -5, 22 + pulse);
+    grad.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+    grad.addColorStop(0.3, activeColor);
+    grad.addColorStop(0.7, 'rgba(56, 189, 248, 0.4)');
+    grad.addColorStop(1, 'rgba(15, 23, 42, 0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.ellipse(0, -4, 18 + pulse, 24 + pulse * 0.5, 0, 0, Math.PI * 2);
     ctx.fill();
 
+    // Rotating orbiting magical sparks
+    for (let i = 0; i < 4; i++) {
+      const angle = animFrame * 4 + (i * Math.PI) / 2;
+      const ox = Math.cos(angle) * (13 + Math.sin(animFrame * 3 + i) * 3);
+      const oy = -5 + Math.sin(angle) * 16;
+      ctx.fillStyle = i % 2 === 0 ? '#ffffff' : '#fef08a';
+      ctx.beginPath();
+      ctx.arc(ox, oy, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    // Inner bright core
+    ctx.save();
     ctx.fillStyle = '#ffffff';
-    ctx.globalAlpha = 0.9;
+    ctx.globalAlpha = 0.85;
     ctx.beginPath();
-    ctx.ellipse(0, 0, 5, 8, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, -4, 6, 12, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
-    // Portal glowing label
-    ctx.font = "8px 'Press Start 2P', monospace";
+    // 4. Upgraded Portal Floating UI Badge
+    // Prevent text cutoff when portal is placed at left or right map edges!
+    let badgeOffsetX = 0;
+    if (x < 140) {
+      badgeOffsetX = Math.min(100, 140 - x);
+    } else if (x > areaWidth - 140) {
+      badgeOffsetX = Math.max(-100, (areaWidth - 140) - x);
+    }
+
+    ctx.save();
+    ctx.translate(badgeOffsetX, -52);
+
+    // Format display label
+    const cleanLabel = label.replace(/[▶◀]/g, '').trim();
+
+    // Measure text width
+    ctx.font = "bold 8px 'Press Start 2P', monospace";
+    const textMetrics = ctx.measureText(cleanLabel);
+    const boxW = Math.max(140, textMetrics.width + 24);
+    const boxH = 26;
+    const boxX = -boxW / 2;
+    const boxY = -boxH / 2;
+
+    // Badge Shadow & Slate Box
+    this.px(ctx, boxX - 2, boxY - 2, boxW + 4, boxH + 4, '#020617');
+    this.px(ctx, boxX - 1, boxY - 1, boxW + 2, boxH + 2, '#38bdf8'); // Glowing cyan border
+    this.px(ctx, boxX, boxY, boxW, boxH, '#0f172a'); // Dark slate interior
+
+    // Top subtle gold accent
+    this.px(ctx, boxX + 2, boxY + 1, boxW - 4, 1, '#fef08a');
+
+    // Header mini tag
+    ctx.font = "7px 'Press Start 2P', monospace";
     ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillText('🌀 GERBANG PORTAL', 0, boxY + 3);
+
+    // Main label text
+    ctx.font = "bold 8px 'Press Start 2P', monospace";
+    ctx.textBaseline = 'bottom';
     ctx.fillStyle = '#fef08a';
-    ctx.fillText(label, 0, -28);
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 2;
+    ctx.strokeText(cleanLabel, 0, boxY + boxH - 2);
+    ctx.fillText(cleanLabel, 0, boxY + boxH - 2);
+
+    ctx.restore();
+
+    ctx.restore();
+  }
+
+  static drawDivineShield(ctx: CanvasRenderingContext2D, x: number, y: number, animFrame: number) {
+    ctx.save();
+    ctx.translate(Math.floor(x), Math.floor(y));
+    const pulse = Math.sin(animFrame * 10) * 3;
+    const shieldAngle = animFrame * 3;
+
+    // Glowing protective sphere
+    ctx.save();
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 2.5;
+    ctx.globalAlpha = 0.8 + Math.sin(animFrame * 8) * 0.2;
+    ctx.beginPath();
+    ctx.arc(0, 0, 24 + pulse, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.15)';
+    ctx.fill();
+
+    // Rotating celestial runes around barrier
+    for (let i = 0; i < 3; i++) {
+      const a = shieldAngle + (i * Math.PI * 2) / 3;
+      const rx = Math.cos(a) * (24 + pulse);
+      const ry = Math.sin(a) * (24 + pulse);
+      ctx.fillStyle = '#fef08a';
+      ctx.beginPath();
+      ctx.arc(rx, ry, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    ctx.restore();
+  }
+
+  static drawHolyBeam(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    vx: number,
+    vy: number,
+    animFrame: number
+  ) {
+    ctx.save();
+    ctx.translate(Math.floor(x), Math.floor(y));
+    const angle = Math.atan2(vy, vx);
+    ctx.rotate(angle);
+
+    // Brilliant golden/white sword beam
+    ctx.save();
+    ctx.fillStyle = '#fef08a';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 20, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.ellipse(3, 0, 14, 3.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Trailing light sparks
+    for (let i = 0; i < 3; i++) {
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(-16 - i * 6, (Math.random() - 0.5) * 6, 4, 4);
+    }
+    ctx.restore();
 
     ctx.restore();
   }

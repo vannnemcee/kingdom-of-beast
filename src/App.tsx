@@ -6,6 +6,7 @@ import {
   Item,
   Monster,
   NPC,
+  PlayerSkills,
   PlayerStats,
   Quest,
 } from './types';
@@ -79,6 +80,7 @@ export default function App() {
   >('none');
   const [dialogNPC, setDialogNPC] = useState<NPC | null>(null);
   const [shopType, setShopType] = useState<'weapon' | 'armor' | 'item'>('weapon');
+  const [inventoryTab, setInventoryTab] = useState<'status' | 'weapons' | 'armors' | 'items' | 'quests' | 'skills'>('status');
 
   // In-Game UI states
   const [currentAreaId, setCurrentAreaId] = useState<AreaId>('kingdom');
@@ -237,6 +239,7 @@ export default function App() {
           let newMaxHp = prev.maxHp;
           let newBaseDmg = prev.baseDamage;
           let newBaseDef = prev.baseDefense;
+          let newSkillPoints = prev.skillPoints || 0;
           let leveledUp = false;
 
           while (newExp >= newMaxExp) {
@@ -246,16 +249,17 @@ export default function App() {
             newMaxHp += 20;
             newBaseDmg += 3;
             newBaseDef += 2;
+            newSkillPoints += 1; // 1 skill point per level up!
             leveledUp = true;
           }
 
           if (leveledUp) {
             soundManager.playLevelUp();
-            setLevelUpToast(`LEVEL UP! LV ${newLevel} (+20 HP, +3 ATK, +2 DEF)`);
+            setLevelUpToast(`LEVEL UP! LV ${newLevel} (+20 HP, +3 ATK, +2 DEF, +1 POIN SKILL!)`);
             setTimeout(() => setLevelUpToast(null), 3500);
           }
 
-          const next = {
+          const next: PlayerStats = {
             ...prev,
             exp: newExp,
             level: newLevel,
@@ -264,7 +268,12 @@ export default function App() {
             hp: leveledUp ? newMaxHp : prev.hp,
             baseDamage: newBaseDmg,
             baseDefense: newBaseDef,
+            skillPoints: newSkillPoints,
+            skills: prev.skills || { whirlwind: 1, holyThrust: 0, ironShield: 0 },
           };
+          if (engineRef.current) {
+            engineRef.current.playerStats = next;
+          }
           saveGame(next);
           return next;
         });
@@ -537,6 +546,35 @@ export default function App() {
     });
   };
 
+  // Handle Skill Upgrade (User requirement: upgrade when leveling up)
+  const handleUpgradeSkill = (skillId: keyof PlayerSkills) => {
+    setPlayerStats((prev) => {
+      const currentPts = prev.skillPoints || 0;
+      if (currentPts <= 0) return prev;
+
+      const currentSkills = prev.skills || { whirlwind: 1, holyThrust: 0, ironShield: 0 };
+      const currentLvl = currentSkills[skillId] || 0;
+      if (currentLvl >= 5) return prev;
+
+      soundManager.playLevelUp();
+      const updatedSkills = {
+        ...currentSkills,
+        [skillId]: currentLvl + 1,
+      };
+
+      const next: PlayerStats = {
+        ...prev,
+        skillPoints: currentPts - 1,
+        skills: updatedSkills,
+      };
+      if (engineRef.current) {
+        engineRef.current.playerStats = next;
+      }
+      saveGame(next);
+      return next;
+    });
+  };
+
   // Determine available quest for NPC dialogue
   const getAvailableQuestForNpc = (npc: NPC | null): Quest | null => {
     if (!npc || npc.role !== 'quest') return null;
@@ -610,7 +648,17 @@ export default function App() {
               soundManager.stopMusic();
               setGameState('title');
             }}
-            onOpenInventory={() => setActiveModal('inventory')}
+            onOpenInventory={() => {
+              setInventoryTab('status');
+              setActiveModal('inventory');
+            }}
+            onOpenSkills={() => {
+              setInventoryTab('skills');
+              setActiveModal('inventory');
+            }}
+            onUseSkill={(skillId) => {
+              if (engineRef.current) engineRef.current.useSkill(skillId);
+            }}
             onOpenSettings={() => setActiveModal('settings')}
             onOpenPause={() => setActiveModal('pause')}
             onOpenPrologue={() => setActiveModal('prologue')}
@@ -700,6 +748,8 @@ export default function App() {
       {activeModal === 'inventory' && (
         <InventoryModal
           playerStats={playerStats}
+          initialTab={inventoryTab}
+          onUpgradeSkill={handleUpgradeSkill}
           onEquipWeapon={handleEquipWeapon}
           onEquipArmor={handleEquipArmor}
           onUsePotion={handleUsePotion}
